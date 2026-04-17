@@ -16,6 +16,11 @@ for i,char in enumerate(vocab):
 def get_vocab():
     return vocab_dictionary
 
-print(vocab_dictionary)
+@app.get('/encode')
+def get_encoding(text: str):
+    encoding = []
+    for char in text:
+        encoding.append(vocab_dictionary[char])
+    return encoding
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

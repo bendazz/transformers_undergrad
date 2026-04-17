@@ -25,3 +25,10 @@ async function loadVocab() {
 }
 
 loadVocab();
+
+document.getElementById('encode-btn').addEventListener('click', async () => {
+    const text = document.getElementById('encode-input').value;
+    const res = await fetch('/encode?text=' + encodeURIComponent(text));
+    const encoding = await res.json();
+    document.getElementById('encode-result').textContent = JSON.stringify(encoding);
+});
