@@ -12,6 +12,22 @@ vocab_dictionary = {}
 for i,char in enumerate(vocab):
     vocab_dictionary[char] = i
 
+def normalize(text):
+    text = text.lower()
+    new_text = ""
+    for char in text:
+        if char in vocab:
+            new_text = new_text + char 
+        else:
+            new_text = new_text + " "
+    new_text = re.sub(r'\s+', ' ', new_text)
+    return new_text
+
+
+        
+embedding = nn.Embedding(27,2)
+
+
 @app.get('/vocab')
 def get_vocab():
     return vocab_dictionary
@@ -19,8 +35,19 @@ def get_vocab():
 @app.get('/encode')
 def get_encoding(text: str):
     encoding = []
-    for char in text:
+    for char in normalize(text):
         encoding.append(vocab_dictionary[char])
     return encoding
+
+@app.get('/embed')
+def embed():
+    result = {}
+    for id in range(27):
+        vector = embedding.weight[id]
+        result[id] = vector.tolist()
+    return result
+
+
+    
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
