@@ -1,132 +1,119 @@
 async function loadVocab() {
-    const [vocabRes, embedRes] = await Promise.all([
-        fetch('/vocab'),
-        fetch('/embed')
-    ]);
-    const vocab = await vocabRes.json();
-    const embeddings = await embedRes.json();
+    const res = await fetch('/vocab_lookup');
+    const lookup = await res.json();
+    const entries = Object.values(lookup);
 
-    const container = document.getElementById('vocab-container');
+    renderCards(entries, {
+        containerId: 'vocab-container',
+        getTitle: e => e.char === ' ' ? '␣' : e.char,
+        getSubtitle: e => `index: ${e.index}`,
+    });
+    renderPlot(entries, {
+        svgId: 'embedding-plot',
+        getLabel: e => e.char === ' ' ? '␣' : e.char,
+    });
+}
 
-    for (const [word, index] of Object.entries(vocab)) {
-        const vector = embeddings[index];
+async function loadPositions() {
+    const res = await fetch('/position_lookup');
+    const lookup = await res.json();
+    const entries = Object.values(lookup);
 
-        const row = document.createElement('div');
-        row.className = 'vocab-row';
+    renderCards(entries, {
+        containerId: 'position-container',
+        getTitle: e => e.position,
+        getSubtitle: e => `position: ${e.position}`,
+    });
+    renderPlot(entries, {
+        svgId: 'position-plot',
+        getLabel: e => e.position,
+    });
+}
+
+function renderCards(entries, { containerId, getTitle, getSubtitle }) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+
+    for (const entry of entries) {
+        const card = document.createElement('div');
+        card.className = 'vocab-card';
 
         const wordEl = document.createElement('div');
         wordEl.className = 'vocab-word';
-        wordEl.textContent = word === ' ' ? '␣' : word;
-
-        const arrow1 = document.createElement('div');
-        arrow1.className = 'vocab-arrow';
-        arrow1.textContent = '→';
+        wordEl.textContent = getTitle(entry);
 
         const indexEl = document.createElement('div');
         indexEl.className = 'vocab-index';
-        indexEl.textContent = index;
+        indexEl.textContent = getSubtitle(entry);
 
-        const arrow2 = document.createElement('div');
-        arrow2.className = 'vocab-arrow';
-        arrow2.textContent = '→';
+        const embedEl = document.createElement('div');
+        embedEl.className = 'vocab-embedding';
+        const [x, y] = entry.embedding;
+        embedEl.textContent = `[${x.toFixed(3)}, ${y.toFixed(3)}]`;
 
-        const vectorEl = document.createElement('div');
-        vectorEl.className = 'vocab-vector';
-        vectorEl.textContent = `[${vector[0].toFixed(3)}, ${vector[1].toFixed(3)}]`;
-
-        row.append(wordEl, arrow1, indexEl, arrow2, vectorEl);
-        container.appendChild(row);
+        card.append(wordEl, indexEl, embedEl);
+        container.appendChild(card);
     }
-
-    drawPlot(vocab, embeddings);
 }
 
-function drawPlot(vocab, embeddings) {
-    const svg = document.getElementById('embed-plot');
-    const svgNS = 'http://www.w3.org/2000/svg';
+function renderPlot(entries, { svgId, getLabel }) {
+    const svg = document.getElementById(svgId);
+    const W = 600, H = 600, PAD = 40;
+    svg.innerHTML = '';
+    const ns = 'http://www.w3.org/2000/svg';
 
-    const points = Object.entries(vocab).map(([word, index]) => ({
-        word: word === ' ' ? '␣' : word,
-        x: embeddings[index][0],
-        y: embeddings[index][1]
-    }));
+    const xs = entries.map(e => e.embedding[0]);
+    const ys = entries.map(e => e.embedding[1]);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs);
+    const yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xPad = (xMax - xMin) * 0.1 || 1;
+    const yPad = (yMax - yMin) * 0.1 || 1;
+    const xLo = xMin - xPad, xHi = xMax + xPad;
+    const yLo = yMin - yPad, yHi = yMax + yPad;
 
-    const xs = points.map(p => p.x);
-    const ys = points.map(p => p.y);
-    const rawMinX = Math.min(...xs, 0), rawMaxX = Math.max(...xs, 0);
-    const rawMinY = Math.min(...ys, 0), rawMaxY = Math.max(...ys, 0);
-    const padX = (rawMaxX - rawMinX) * 0.15 || 1;
-    const padY = (rawMaxY - rawMinY) * 0.15 || 1;
-    const minX = rawMinX - padX, maxX = rawMaxX + padX;
-    const minY = rawMinY - padY, maxY = rawMaxY + padY;
+    const sx = v => PAD + (v - xLo) / (xHi - xLo) * (W - 2 * PAD);
+    const sy = v => H - PAD - (v - yLo) / (yHi - yLo) * (H - 2 * PAD);
 
-    const plotSize = 200;
-    const scaleX = v => ((v - minX) / (maxX - minX)) * plotSize;
-    const scaleY = v => plotSize - ((v - minY) / (maxY - minY)) * plotSize;
-
-    const originX = scaleX(0);
-    const originY = scaleY(0);
-
-    const makeAxis = (x1, y1, x2, y2, markerEnd) => {
-        const line = document.createElementNS(svgNS, 'line');
-        line.setAttribute('x1', x1);
-        line.setAttribute('y1', y1);
-        line.setAttribute('x2', x2);
-        line.setAttribute('y2', y2);
-        line.setAttribute('stroke', '#a8b2d1');
-        line.setAttribute('stroke-width', '0.6');
-        if (markerEnd) line.setAttribute('marker-end', markerEnd);
-        svg.appendChild(line);
+    // axes through origin (if visible)
+    const axis = (x1, y1, x2, y2) => {
+        const l = document.createElementNS(ns, 'line');
+        l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+        l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+        l.setAttribute('stroke', '#5c6b8a');
+        l.setAttribute('stroke-width', '1');
+        l.setAttribute('stroke-dasharray', '4,4');
+        svg.appendChild(l);
     };
+    if (xLo <= 0 && xHi >= 0) axis(sx(0), PAD, sx(0), H - PAD);
+    if (yLo <= 0 && yHi >= 0) axis(PAD, sy(0), W - PAD, sy(0));
 
-    let defs = svg.querySelector('defs');
-    if (!defs) {
-        defs = document.createElementNS(svgNS, 'defs');
-        const marker = document.createElementNS(svgNS, 'marker');
-        marker.setAttribute('id', 'arrowhead');
-        marker.setAttribute('viewBox', '0 0 10 10');
-        marker.setAttribute('refX', '8');
-        marker.setAttribute('refY', '5');
-        marker.setAttribute('markerWidth', '4');
-        marker.setAttribute('markerHeight', '4');
-        marker.setAttribute('orient', 'auto');
-        const path = document.createElementNS(svgNS, 'path');
-        path.setAttribute('d', 'M0,0 L10,5 L0,10 z');
-        path.setAttribute('fill', '#a8b2d1');
-        marker.appendChild(path);
-        defs.appendChild(marker);
-        svg.appendChild(defs);
-    }
+    // bounding box
+    const box = document.createElementNS(ns, 'rect');
+    box.setAttribute('x', PAD); box.setAttribute('y', PAD);
+    box.setAttribute('width', W - 2 * PAD); box.setAttribute('height', H - 2 * PAD);
+    box.setAttribute('fill', 'none');
+    box.setAttribute('stroke', '#0f3460');
+    svg.appendChild(box);
 
-    makeAxis(0, originY, plotSize, originY, 'url(#arrowhead)');
-    makeAxis(originX, plotSize, originX, 0, 'url(#arrowhead)');
+    for (const entry of entries) {
+        const [x, y] = entry.embedding;
+        const cx = sx(x), cy = sy(y);
 
-    for (const p of points) {
-        const cx = scaleX(p.x);
-        const cy = scaleY(p.y);
+        const dot = document.createElementNS(ns, 'circle');
+        dot.setAttribute('cx', cx); dot.setAttribute('cy', cy);
+        dot.setAttribute('r', '5');
+        dot.setAttribute('fill', '#e94560');
+        svg.appendChild(dot);
 
-        const circle = document.createElementNS(svgNS, 'circle');
-        circle.setAttribute('cx', cx);
-        circle.setAttribute('cy', cy);
-        circle.setAttribute('r', '2');
-        circle.setAttribute('fill', '#e94560');
-        svg.appendChild(circle);
-
-        const label = document.createElementNS(svgNS, 'text');
-        label.setAttribute('x', cx + 3);
-        label.setAttribute('y', cy - 3);
-        label.setAttribute('fill', '#a8b2d1');
-        label.setAttribute('font-size', '5');
-        label.textContent = p.word;
+        const label = document.createElementNS(ns, 'text');
+        label.setAttribute('x', cx + 8); label.setAttribute('y', cy - 6);
+        label.setAttribute('fill', '#e0e0e0');
+        label.setAttribute('font-size', '13');
+        label.setAttribute('font-family', 'monospace');
+        label.textContent = getLabel(entry);
         svg.appendChild(label);
     }
 }
 
 loadVocab();
-
-document.getElementById('encode-btn').addEventListener('click', async () => {
-    const text = document.getElementById('encode-input').value;
-    const res = await fetch('/encode?text=' + encodeURIComponent(text));
-    const encoding = await res.json();
-    document.getElementById('encode-result').textContent = JSON.stringify(encoding);
-});
+loadPositions();
